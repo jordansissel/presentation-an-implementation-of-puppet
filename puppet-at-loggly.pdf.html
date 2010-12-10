@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+   <title>Puppet at Loggly</title>
+   
+   
+
+<style>
+html, body { margin: 0; padding: 0; }
+
+body { font-family: Verdana, Geneva, Arial, Helvetica, sans-serif; }
+
+a:link, a:visited { color: black; }
+
+h1 { font-size: 30pt;  }
+h2 { font-size: 28pt;  }
+h3 { font-size: 25pt;  }
+p, li, dt, dd, td, th { font-size: 18pt; }
+
+pre { font-size: 14pt;  }
+pre.small { font-size: 11pt; }
+
+pre.code {
+        background-color: azure;
+        padding: 5px;
+      }
+     
+ul { list-style-type: square; }    
+   
+.center { text-align: center; }   
+     
+.slide { page-break-after: always;
+         min-height: 100mm;
+         padding: 40px;
+         
+         border: 1px dotted black;
+
+/*      
+  background: -moz-linear-gradient( top, maroon, red);
+*/
+       }
+
+
+
+/*
+for princexml (CSS3 paged media support)
+@page { size: A4 landscape }
+*/
+</style>
+
+</head>
+<body>
+
+<div class="presentation">
+
+<div class='slide title'>
+<!-- _S9SLIDE_  title -->
+
+<h2> Puppet at Loggly </h2>
+
+<p>Jordan Sissel. hacker. Loggly, Inc.</p>
+
+
+</div>
+<div class='slide '>
+<h1 id="what-is-loggly">What is Loggly?</h1><!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Logging as a Service</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Provides search, analytics, and archival for your logs and events.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>You give us logs, we give you a UI and an API.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Currently in beta - sign up: http://www.loggly.com/signup/</li>
+  </ul>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="puppet-at-loggly">Puppet at Loggly</h1><p>Our puppet deployment is:</p>
+
+<ul>
+  <li>in EC2 (using RightScale)</li>
+  <li>nodeless (pure fact-driven)</li>
+  <li>masterless (no puppet master)</li>
+</ul>
+
+<p>Uses:</p>
+
+<ul>
+  <li>custom facts</li>
+  <li>extlookup</li>
+  <li>custom parser functions</li>
+  <li>exported resources</li>
+  <li>exported custom defines</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="infrastructure-in-mvc">Infrastructure in MVC</h1><ul>
+  <li>Model (Puppet Resources)</li>
+  <li>View (applied configuration)</li>
+  <li>Controller (Truth + Puppet)</li>
+</ul>
+
+<p>A source of Truth feeds the Model and results in an applied configuration.</p>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---modules">Style - Modules</h1><p>I never use &lsquo;import&rsquo;. I always let puppet determine the path of a class.</p>
+
+<p>Your puppet repository should look like this:</p>
+
+<pre><code>manifests/site.pp
+modules/MODULENAME/{manifests,files,templates,plugins}/
+# Examples:
+modules/a
+</code></pre>
+
+<ul>
+  <li>Let puppet be smart:
+    <ul>
+      <li>use a class: &lsquo;include foo::bar::baz&rsquo;</li>
+      <li>automatically looks for it here: modules/foo/manifests/bar/baz.pp</li>
+    </ul>
+  </li>
+  <li>Namespace everything.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---file-paths">Style - File Paths</h1><p>Puppet lets you abstract things away from the madness of your OS, let it.</p>
+
+<ul>
+  <li>Use module-relative paths.
+    <ul>
+      <li>source =&gt; <code>puppet:///modules/MODULE/PATH</code></li>
+      <li>maps to: <em>modulepath</em>/MODULE/files/PATH</li>
+    </ul>
+  </li>
+  <li>Don&rsquo;t include the full target path in a file name.</li>
+</ul>
+
+<p>Example:</p>
+
+<pre><code>class ssh::server {
+  file {
+    "/etc/ssh/sshd_config":
+      #source =&gt; "puppet:///modules/ssh/etc/ssh/sshd_config", # Bad!
+      source =&gt; "puppet:///modules/ssh/sshd_config";          # Good!
+  }
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---avoid-coupling-variables">Style - Avoid Coupling (variables)</h1><ul>
+  <li>Don&rsquo;t use variables from other classes</li>
+  <li>
+    <p>Avoid trying to expose variables to other classes; instead use custom
+defines.</p>
+
+    <pre><code># Bad
+include apache::server     # sets '$configpath'
+include apache::package
+file {
+  "${apache::server::configpath}/mysite.conf":
+    source =&gt; "puppet:///...",
+    require =&gt; Class["apache::package"]
+    notify =&gt; Class["apache::server"];
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="styles---avoid-coupling-variables">Styles - Avoid Coupling (variables)</h1><ul>
+  <li>
+    <p>Use a custom define to abstract a general-purpose apache config entry:</p>
+
+    <pre><code># In modules/apache/manifests/config.pp
+define apache::config($source) {
+  include apache::server
+  include apache::package
+  file {
+    "/etc/apache/conf.d/$name.conf":
+      source =&gt; $source,
+      require =&gt; Class["apache::package"]
+      notify =&gt; Class["apache::server"];
+  }
+}
+
+# Abstract all the complexity into a reusable define:
+apache::config {
+  "mysite":
+    source =&gt; "puppet:///...";
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---avoid-coupling-resources">Style - Avoid Coupling (resources)</h1><ul>
+  <li>
+    <p>Don&rsquo;t require resources you haven&rsquo;t declared in a class.</p>
+
+    <pre><code>class apache::server {
+  include apache::package    # defines Package["apache2"]
+
+  service {
+    "apache":
+      require =&gt; Package["apache2"],        # Bad!
+      require =&gt; Class["apache::package"],  # Good!
+      ... ;
+  }
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---avoid-coupling-resources-1">Style - Avoid Coupling (resources)</h1><ul>
+  <li>
+    <p>Split &lsquo;service&rsquo; and &lsquo;package&rsquo; resources. Require the &lsquo;package&rsquo;, notify the &lsquo;service&rsquo;</p>
+
+    <pre><code>class apache::package {
+  # any package/files/users for apache
+}
+class apache::server {
+  include apache::package
+  # any services for apache
+}
+class nagios::web { # custom define, includes apache::package and ::server
+  apache::config {
+    "nagios":
+      source =&gt; "puppet:///modules/nagios/web/nagios.httpd.conf";
+  }
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---manifest-files">Style - Manifest Files</h1><ul>
+  <li>Don&rsquo;t define multiple classes or defines in a single manifest file.</li>
+  <li>Don&rsquo;t nest classes or defines in a file.</li>
+</ul>
+
+<p>Example:</p>
+
+<table>
+  <tr>
+  <td>
+  <pre>
+    # modules/foo/manifests/init.pp
+    class foo {
+      class bar {
+        # Bad!
+      }
+    }
+  </pre>
+  </td>
+  <td>
+  <pre>
+    # Good
+    # modules/foo/manifests/init.pp
+    class foo { ... }
+
+    # modules/foo/manifests/bar.pp
+    class foo::bar { ... }
+  </pre>
+  </td>
+  </tr>
+</table>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---custom-defines">Style - Custom Defines</h1><ul>
+  <li>Custom defines so we can reuse code.</li>
+  <li>Write custom defines to abstract resources.</li>
+  <li>Split complex classes and defines into smaller ones.</li>
+  <li>Even single-line classes are OK.</li>
+  <li>
+    <p>Dependencies on custom defines:</p>
+
+    <pre><code>some::custom::define {
+  "myname": ... ;
+}
+
+file {
+  "/tmp/x"
+    require =&gt; Some::Custom::Define["myname"];
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="style---testing">Style - Testing</h1><ul>
+  <li>Currently have bare minimum puppet testing. Want more.</li>
+  <li>
+    <p>Syntax check all puppet manifests:</p>
+
+    <pre><code>find modules manifests -name '*.pp' \
+  | xargs -t -n1 -P2 sh -c 'puppet --parseonly "$@" || exit 255' -
+</code></pre>
+  </li>
+  <li>
+    <p>Syntax check templates:</p>
+
+    <pre><code>find modules/*/templates/ -maxdepth 1 -type f -not -name .svn \
+  | xargs -n1 sh -c 'erb -x -T - $1 | ruby -c 2&gt;&amp;1 | sed -e "s,^,$1: ,"' -
+</code></pre>
+  </li>
+  <li>For now, can only check one manifest per puppet invocation (see workaround: bug #4177)</li>
+  <li>If any syntax test fails, we abort the package build.</li>
+  <li>Prevents accidental push of bad puppet configs.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="truth">Truth</h1><p>Two main kinds of truth:</p>
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Machine truth, &ldquo;I am a frontend&rdquo;</li>
+    <li>Sources of machine truth: extlookup (by hostname), RightScale API, EC2
+userdata, etc.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Deployment truth, &ldquo;The frontend role has package &lsquo;loggly-frontend&rsquo; with version 1.2345&rdquo;</li>
+    <li>Sources of deployment truth: extlookup (by environment/deployment), RightScale API, etc</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Possible synonyms for &lsquo;deployment&rsquo;: cluster, environment, site.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="machine-truth-on-rightscale">Machine Truth on RightScale</h1><!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Tag each machine with roles: frontend, solr, zookeeper, monitor, etc.</li>
+    <li>Use API to query all machines and tags in a deployment.</li>
+    <li>Also tag with any other machine-specific data (zookeeper id, etc).</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <center>
+<table style="background-color: white; color: black">
+  <td valign="top"> <b> Tag(s): </b> </td>
+  <td> 
+    role:solr=true   <br />
+    role:zookeeper=true  <br />
+    solr:levels=4,5  <br />
+    zookeeper:id=3 <br />
+  </td>
+</table>
+</center>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="deployment-truth">Deployment Truth</h1><ul>
+  <li>Deployments are &lsquo;production,&rsquo; &lsquo;staging,&rsquo; etc.</li>
+  <li>Each has the same roles available (frontend, memcache, etc), but different
+configurations/tuning.  </li>
+  <li>Could have totally independent roles between deployments. Depends on your
+business needs.</li>
+  <li>
+    <p>I use extlookup.</p>
+
+    <pre><code># in site.pp:
+# '$deployment' fact comes from machine truth. What deployment are we?
+$extlookup_precedence = [ "%{deployment}/config", "common" ]
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="deployment-truth-example">Deployment Truth (example)</h1><ul>
+  <li>
+    <p>Example <em>production</em>/config.csv (specifying tunables)</p>
+
+    <pre><code>package/loggly-frontend,3045.trunk
+package/loggly-monitoring-membase,latest
+config/s3_enable,true
+config/s3_enable_customers,all
+</code></pre>
+  </li>
+  <li>
+    <p>Example <code>modules/loggly/manifests/frontend.pp</code> (uses extlookup!)</p>
+
+    <pre><code>package {
+  "loggly-frontend":
+    ensure =&gt; extlookup("package/loggly-frontend");
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="role-based-deployment">Role-based deployment</h1><!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Every application component gets a role. </li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Even tiny stuff like standalone cron jobs.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Roles: frontend, mysql-master, db-backup, s3-cleaner, monitor, etc.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="defining-a-role">Defining a Role</h1><pre><code>class loggly::frontend {
+  # include any other required classes
+
+  package {
+    "loggly-frontend": ensure =&gt; extlookup("package/loggly-frontend");
+  }
+
+  iptables::rule {
+    "allow http": ports =&gt; 80;
+    "allow https": ports =&gt; 443;
+  }
+
+  apache::site {
+    "loggly-frontend":
+      source =&gt; template("loggly/frontend/loggly-frontend.httpd.conf.erb");
+  }
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="defining-a-role-1">Defining a Role</h1><p>Result of previous slide&rsquo;s config:</p>
+
+<ul>
+  <li>dpkg -l loggly-frontend: <code>loggly-frontend   3044.trunk</code></li>
+  <li>/etc/apache2/sites-enabled/loggly-frontend.conf exists</li>
+  <li>
+    <p>/etc/iptables.d/&hellip;</p>
+
+    <pre><code>-A INPUT -s 0.0.0.0/0 -p tcp --syn --dport 80 -j ACCEPT -m comment \
+  --comment "allow http (any source)"
+-A INPUT -s 0.0.0.0/0 -p tcp --syn --dport 443 -j ACCEPT -m comment \
+  --comment "allow https (any source)"
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="defining-a-role-2">Defining a Role</h1><p>All features of a role should be defined in that class.</p>
+
+<ul>
+  <li>Define firewall rules (even if you export this to a network device)</li>
+  <li>Define monitoring checks (even if you export this to another server)</li>
+  <li>Define the user the role programs run as</li>
+  <li>Define configs, packages, etc.</li>
+  <li>Abstract what you can into custom defines (iptables::rule, apache::site)</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="nodeless-puppet">Nodeless Puppet</h1><ul>
+  <li>Use truth/facts to guide puppet.</li>
+  <li>No <code>node somehost { }</code> definitions</li>
+  <li>If you use an external classifier, do not specify &lsquo;classes&rsquo; - only send &lsquo;parameters&rsquo;</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="why-nodeless">Why Nodeless?</h1><ul>
+  <li>One place for configuration logic.</li>
+</ul>
+
+<p>Example:</p>
+
+<ul>
+  <li>Are we a frontend? Ok, install the frontend.</li>
+  <li>
+    <p>Not a frontend? Ok, make sure the frontend is not installed.</p>
+
+    <pre><code>if has_role("frontend") {
+  include frontend
+} else {
+  include frontend::remove
+}
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="nodeless-puppet-sitepp">Nodeless Puppet (site.pp)</h1><p>A nodeless site.pp is practically empty.</p>
+
+<pre><code># manifests/site.pp
+node default {
+  include truth::enforcer
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="nodeless-puppet-truthenforcer">Nodeless Puppet (truth::enforcer)</h1><pre><code># modules/truth/manifests/enforcer.pp
+class truth::enforcer {
+  # For each role, include 1 class that is that role.
+  if has_role("statsserver") {
+    include loggly::statsserver
+  } else {
+    # Ensure this server has no 'statsserver' if we are not a statsserver.
+    include loggly::stattserver::remove
+  }
+
+  ...
+}
+</code></pre>
+
+<ul>
+  <li><code>has_role()</code> is a custom puppet function I wrote </li>
+  <li>makes it easy to handle the <code>role:rolename=true</code> tags.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="custom-resources">Custom Resources</h1><p>Custom defines let you create your own resource types that wrap other resources.</p>
+
+<pre><code># Simplified version:
+define supervisor::program($command, $user, $notifycmd="", $directory="/",
+                           $ensure="present") {
+  include supervisor
+
+  file {
+    "/etc/supervisor/conf.d/$name.conf":
+      ensure =&gt; $file_ensure,
+      content =&gt; template("supervisor/program.erb"),
+      notify =&gt; Exec["poke supervisord"];
+  }
+
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="example-custom-defines---supervisor">Example Custom Defines - supervisor</h1><pre><code>supervisor::program {
+  "loggly-solrserver":
+    command =&gt; "/opt/loggly/solrserver/solrserver.sh",
+    user =&gt; "root", # for ulimit, will drop privs before launching.
+    subscribe =&gt; Class["loggly::config", "loggly::solr"],
+    require =&gt; [User["loggly-solrserver"],
+                Class["loggly::common", "zeromq::java"],
+                File["/opt/loggly/solrserver/solrserver.sh",
+                     "/opt/solr/dist/etc/log4j.properties"]];
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="example-custom-defines---iptables">Example Custom Defines - iptables</h1><pre><code>iptables::rule {
+  "zookeeper client":
+    roles =&gt; ["solr", "zookeeper"],
+    ports =&gt; 2181;
+  "zookeeper ensemble":
+    roles =&gt; ["zookeeper"],
+    ports =&gt; [2888, 3888];
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="example-custom-defines---nagios">Example Custom Defines - nagios</h1><pre><code># The '@@' notation means 'export this resource'
+# More on exported resources later.
+@@nagios::host {
+  "$fqdn":
+    address =&gt; $ipaddress_eth0,
+    tag =&gt; "deployment::$deployment";
+}
+
+@@nagios::check {
+  "disk space on $fqdn":
+    command =&gt; "check-disk-space",
+    remote =&gt; true,
+    host =&gt; $fqdn,
+    contacts =&gt; "pagerduty",
+    tag =&gt; "deployment::$deployment";
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources">Exported Resources</h1><ul>
+  <li>Export resource definitions to a central database</li>
+  <li>Collect exported resources on nodes</li>
+  <li>You can export custom defines.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-1">Exported Resources</h1><ul>
+  <li>Keeping all your role/service logic in one place.</li>
+  <li>Generating nagios configs</li>
+  <li>Generating DNS configs</li>
+  <li>Sharing node ssh public keys</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-nagios">Exported Resources: Nagios</h1><ul>
+  <li>Export NRPE checks</li>
+  <li>Export host definitions</li>
+  <li>Export service definitions</li>
+  <li>I use custom defines for this.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-nagios-1">Exported Resources: Nagios</h1><p>Exporting a check (a custom define):</p>
+
+<pre><code>@@nagios::check {
+  "httpinput end-to-end test from $fqdn":
+    command =&gt; "endtoend-httpinput",   # Command to run
+    remote =&gt; true,                    # Is an NRPE check
+    host =&gt; $fqdn,                     # Host to target
+    contacts =&gt; "pagerduty",           # Contact
+    tag =&gt; "deployment::$deployment";  # Workaround for bug#5329
+}
+
+nagios::command {
+  "endtoend-httpinput":
+    command =&gt; "/usr/local/bin/endtoend.py http",
+    remote =&gt; true; # register this command with NRPE
+}
+</code></pre>
+
+
+</div>
+<div class='slide '>
+<h1 id="collecting-exported-checks">Collecting Exported Checks</h1><p>Collect all checks exported in our deployment (the <code>&lt;&lt;| ... |&gt;&gt;</code> syntax):</p>
+
+<pre><code># Query by tag to work around puppet bug #5329
+Nagios::Check &lt;&lt;| tag == "deployment::$deployment" |&gt;&gt; {
+  notify =&gt; Class["nagios::server"]
+}
+</code></pre>
+
+<p>Results:</p>
+
+<pre><code>% ls /etc/nagios3/checks.d 
+check-frontend1.example.com-disk space on frontend1.example.com.cfg
+check-frontend2.example.com-disk space on frontend2.example.com.cfg
+check-ops.example.com-disk space on ops.example.com.cfg
+check-proxy1.example.com-disk space on proxy1.example.com.cfg
+check-proxy2.example.com-disk space on proxy2.example.com.cfg
+...
+</code></pre>
+
+<p>Code to be released soon.</p>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-caveats">Exported Resources (caveats)</h1><p>What if you shutdown an EC2 instance and it no longer needs monitoring?</p>
+
+<ul>
+  <li>No default way to &lsquo;purge&rsquo; old resources</li>
+  <li>
+    <p>Can use &lsquo;tidy&rsquo; to purge files not updated recently:</p>
+
+    <pre><code>tidy {
+  [ "/etc/nagios3/hosts.d", "/etc/nagios3/checks.d" ]:
+    age =&gt; 1d,
+    notify =&gt; Class["nagios::server"],
+    recurse =&gt; true,
+    matches =&gt; [ "*.cfg" ];
+}
+</code></pre>
+  </li>
+  <li>Not ideal. Another option is hacking in resource timestamps.
+Google for &lsquo;puppet exported resource expiration&rsquo;</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-caveats-1">Exported Resources (caveats)</h1><p>Scaling problems:</p>
+
+<ul>
+  <li>Puppet users are not necessarily Rails/ActiveRecord scaling experts. </li>
+  <li>thin_storeconfigs and async_storeconfigs can help, but don&rsquo;t solve everything.</li>
+  <li>Schema: Expensive read and write query model.</li>
+  <li>Schema: Reads: Nodes X Resources X Parameter Names X Parameter Values</li>
+  <li>Geographically distant mysql servers hard to query quickly. Scaling not obvious.</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="exported-resources-caveats-2">Exported Resources (caveats)</h1><ul>
+  <li>Chicken and egg: Seems obvious, but exports aren&rsquo;t available until they are exported.</li>
+  <li>Bug: Exported facts override local facts (really really bad; #5212)</li>
+  <li>Bug: Can&rsquo;t query by environment (workaround: use tags; #5239)</li>
+  <li>Bug: Can&rsquo;t query for your own exports (workaround: use tags; #????)</li>
+  <li>Bug: Can&rsquo;t use SSL to MySQL (patch available; #5235)</li>
+  <li>Bug: Can&rsquo;t update environment value (#5213)</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="masterless-puppet">Masterless Puppet</h1><p>Overview:</p>
+
+<ul>
+  <li>No puppet master required - standalone execution</li>
+  <li>Can still use storeconfigs, tags, exported resources, etc.</li>
+  <li>Works perfectly with a nodeless configuration.</li>
+  <li>Instead of <code>puppet agent</code> you <code>puppet apply</code></li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="masterless-puppet-1">Masterless Puppet</h1><ul>
+  <li>You can run puppet code from the command line and as non-root.</li>
+  <li>
+    <p>Great for testing things even if you have a puppet master.</p>
+
+    <pre><code>% puppet apply -e 'file { "/tmp/x": content =&gt; "Hello world\n"; }'
+notice: /Stage[main]//File[/tmp/x]/ensure: defined content as 
+'{md5}f0ef7081e1539ac00ef5b761b4fb01b3'
+
+% cat /tmp/x
+Hello world
+</code></pre>
+  </li>
+  <li>Alternately, run a puppet manifest: <code>puppet apply mymanifest.pp</code></li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="masterless-and-storeconfigs">Masterless and Storeconfigs</h1><!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>I still wanted storeconfigs (for exported resources).</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>No obvious place to run the database.</li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>Amazon RDS to the rescue! (Launches a managed mysql instance for me. Win!)</li>
+  </ul>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="masterless-benefits">Masterless Benefits</h1><ul>
+  <li>No master/agent SSL problems (common in the #puppet IRC channel)</li>
+  <li>No mongrel/webrick/passenger madness</li>
+  <li>No &lsquo;how do I scale my master&rsquo; question</li>
+  <li>Storeconfigs still works! :)</li>
+  <li>
+    <p>Less chicken-and-egg; can start a standalone deployment with simply one
+<code>puppet apply</code>.</p>
+
+    <pre><code># Masterless example:
+% puppet --modulepath /path/to/modules /path/to/manifests.site.pp
+</code></pre>
+  </li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="masterless-caveats">Masterless Caveats</h1><p>In general: You have to solve problems already solved with the master:</p>
+
+<ul>
+  <li>Not a popular solution. Few people run it.</li>
+  <li>Puppet kick, puppet queue, and other features probably don&rsquo;t work. (needs verification)</li>
+  <li>Probably no puppet reports (haven&rsquo;t tried)</li>
+  <li>Can&rsquo;t rely on fileserver auth for security. Requires your own deployment mechanism (for each node)</li>
+  <li>You can&rsquo;t run the agent. You have to periodically run &lsquo;puppet apply&rsquo;</li>
+</ul>
+
+
+</div>
+<div class='slide '>
+<h1 id="lifecycle-of-a-masterless-puppet-run">Lifecycle of a (Masterless) Puppet Run</h1><p>We have a script run via cron doing:</p>
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>apt-get install loggly-puppet
+      <ul>
+        <li>This downloads our latest puppet manifests and modules.</li>
+        <li>Needs to be outside of puppet so we can repair &lsquo;broken puppet&rsquo; problems
+like syntax errors or other catalog problems.</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>puppet &ndash;environment prerun manifests/prerun.pp
+      <ul>
+        <li>Fetches latest truth (Query RightScale for machines/tags/properties)</li>
+        <li>Does basic sanity checking and bootstrapping fixes for the real puppet run.</li>
+        <li>Upgrades puppet, makes storeconfigs work, etc.</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+<!-- end step -->
+
+<!-- begin step {} -->
+<div class="step">
+
+  <ul>
+    <li>puppet &ndash;storeconfigs manifests/site.pp
+      <ul>
+        <li>This is the main puppet run.</li>
+        <li>The &lsquo;environment&rsquo; is set in puppet.conf by puppet itself, based on truth.</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+<!-- end step -->
+
+
+</div>
+<div class='slide '>
+<h1 id="the-end">The End</h1><p>Find me later:</p>
+
+<ul>
+  <li>IRC: whack on irc.freenode.org and in #puppet</li>
+  <li>Twitter: @jordansissel</li>
+</ul>
+
+<p>Community:</p>
+
+<ul>
+  <li>IRC: #puppet on irc.freenode.org</li>
+  <li>Mailing list (puppet-users): http://groups.google.com/group/puppet-users</li>
+  <li>File bugs: http://projects.puppetlabs.com/issues/</li>
+</ul>
+</div>
+
+
+  </div> <!-- presentation -->
+</body>
+</html> 
+

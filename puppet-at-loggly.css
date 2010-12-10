@@ -1,0 +1,141 @@
+@import url(jls/projection.css); /* required to make the slide show run at all */
+     
+html, body { 
+  font-family: Verdana, Geneva, Arial, Helvetica, sans-serif; 
+  background-color: black;
+  width: 100%;
+  height: 100%;
+  color: white;
+}
+
+a:link, a:visited { color: silver; }
+
+.presentation {
+  width: 100%;
+  height: 100%;
+}
+
+
+.slide h1 { font-size: 30pt;  }
+
+.slide h1 {  text-align: center; }
+
+.slide h1.fullscreen { position: absolute;
+                       top: 40%;
+                       width: 100%; }
+
+/* lets you create slides with no heading (because heading is hidden but gets included in toc) */
+.slide h1.hidden     { display: none; }
+
+
+.slide h2 { font-size: 28pt;  }
+
+.slide 
+
+.slide.title {
+  margin: auto;
+}
+
+h3 { font-size: 25pt;  }
+
+/* todo: add special formating for .cover slide
+   lets you use h1(cover). for title/cover slide (a la S5 slide0) but more generic (not bound to 1st slide)
+*/
+
+.cover h1 { /* tbd */ }
+.cover h2 { /* tbd */ }
+
+/* todo: add special formating for h1, h2 in footer */
+
+#footer h1 { /* tbd */ }
+#footer h2 { /* tbd */ }
+
+
+p, li, dt, dd, td, th { font-size: 18pt; }
+
+ul { list-style-type: square; }    
+
+/**********************************/
+/* general text-alignment classes */
+
+.left   { text-align: left; }
+.center { text-align: center; }
+.right  { text-align: right;  }
+
+/**********************************/
+/* general font-size classes      */
+
+.small { font-size: 97%; }
+
+.x-small,
+.smaller { font-size: 88%; }
+
+.xx-small,
+.smallest,
+.tiny      { font-size: 82%; }
+
+
+
+pre { 
+  border-left: 3px solid green;
+  padding-left: 10px;
+  font-size: 16pt;  
+  color: #DFC;
+}
+
+.code { 
+        background-color: #001133;
+        padding: 8px;
+        border: 2px solid #445566;
+      }
+     
+.footnote a:first-of-type  { text-decoration: none; }
+
+
+p.small  { font-size: 97%; }
+
+p.x-small,
+p.smaller,  
+p.footnote { font-size: 88%; }
+
+p.xx-small,
+p.smallest,
+p.tiny     { font-size: 82%; }
+
+
+.help p,
+.help td  { font-size: 88%; }
+
+ 
+.step { 
+  opacity: 0; 
+  -webkit-transition: opacity 0.5s ease-in;
+  -moz-transition: opacity 0.5s ease-in;
+  -o-transition: opacity 0.5s ease-in;
+}
+
+.active-slide {
+  opacity: 1;
+  -webkit-transition: opacity 0.5s ease-in;
+  -moz-transition: opacity 0.5s ease-in;
+  -o-transition: opacity 0.5s ease-in;
+}
+
+.inactive-slide {
+  opacity: 0;
+  -webkit-transition: opacity 0.5s ease-out;
+  -moz-transition: opacity 0.5s ease-out;
+  -o-transition: opacity 0.5s ease-out;
+}
+    
+
+/* or hide next steps e.g.  .step { visibility: hidden; } */
+.stepcurrent { 
+  opacity: 1;
+  -webkit-transition: opacity 0.5s ease-in;
+  -moz-transition: opacity 0.5s ease-in;
+  -o-transition: opacity 0.5s ease-in;
+}
+
+
+
