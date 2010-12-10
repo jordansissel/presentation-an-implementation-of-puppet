@@ -8,6 +8,8 @@ color: white
 
 Jordan Sissel. hacker. Loggly, Inc.
 
+![hoover](hoover.png)
+
 # What is Loggly?
 
 <% step do %>
@@ -23,11 +25,14 @@ Jordan Sissel. hacker. Loggly, Inc.
 * Currently in beta - sign up: http://www.loggly.com/signup/
 <% end %>
 
+![hoover](hoover.png)
+
 # Puppet at Loggly
 
 Our puppet deployment is:
 
 * in EC2 (using RightScale)
+* also on vmware/physical hosts (for random dev work)
 * nodeless (pure fact-driven)
 * masterless (no puppet master)
 
@@ -47,6 +52,14 @@ Uses:
 
 A source of Truth feeds the Model and results in an applied configuration.
 
+# Agenda
+
+* Style
+* Truth
+* Nodeless Puppet
+* Exported Resoruces
+* Masterless Puppet
+
 # Style - Modules
 
 I never use 'import'. I always let puppet determine the path of a class.
@@ -55,14 +68,16 @@ Your puppet repository should look like this:
 
     manifests/site.pp
     modules/MODULENAME/{manifests,files,templates,plugins}/
+
     # Examples:
-    modules/a
+    modules/apache/manifests/server.pp
+    modules/apache/templates/httpd.conf.erb
+    modules/ssh/manifests/server.pp
+    modules/ssh/files/sshd_config
 
 * Let puppet be smart:
   * use a class: 'include foo::bar::baz'
   * automatically looks for it here: modules/foo/manifests/bar/baz.pp
-
-* Namespace everything.
 
 # Style - File Paths
 
@@ -289,7 +304,7 @@ Two main kinds of truth:
           ensure => extlookup("package/loggly-frontend");
       }
 
-# Role-based deployment
+# Truth - Role-based deployment
 
 <% step do %>
 * Every application component gets a role. 
@@ -301,7 +316,7 @@ Two main kinds of truth:
 * Roles: frontend, mysql-master, db-backup, s3-cleaner, monitor, etc.
 <% end %>
 
-# Defining a Role
+# Truth - Defining a Role
 
     class loggly::frontend {
       # include any other required classes
@@ -321,7 +336,7 @@ Two main kinds of truth:
       }
     }
 
-# Defining a Role
+# Truth - Defining a Role
 
 Result of previous slide's config:
 
@@ -334,7 +349,7 @@ Result of previous slide's config:
       -A INPUT -s 0.0.0.0/0 -p tcp --syn --dport 443 -j ACCEPT -m comment \
         --comment "allow https (any source)"
 
-# Defining a Role
+# Truth - Defining a Role
 
 All features of a role should be defined in that class.
 
@@ -392,8 +407,7 @@ A nodeless site.pp is practically empty.
 * `has_role()` is a custom puppet function I wrote 
 * makes it easy to handle the `role:rolename=true` tags.
 
-
-# Custom Resources
+# Custom Defined Resources
 
 Custom defines let you create your own resource types that wrap other resources.
 
@@ -460,6 +474,11 @@ Custom defines let you create your own resource types that wrap other resources.
 * Export resource definitions to a central database
 * Collect exported resources on nodes
 * You can export custom defines.
+
+Biggest win: 
+
+**Treat your infrastructure as a collective (or multiple collectives) rather
+than as individual, standalone hosts**
 
 # Exported Resources
 
@@ -610,7 +629,7 @@ In general: You have to solve problems already solved with the master:
 * Can't rely on fileserver auth for security. Requires your own deployment mechanism (for each node)
 * You can't run the agent. You have to periodically run 'puppet apply'
 
-# Lifecycle of a (Masterless) Puppet Run
+# Masterless: Lifecycle of a Puppet Run
 
 We have a script run via cron doing:
 
