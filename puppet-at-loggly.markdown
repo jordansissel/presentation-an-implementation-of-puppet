@@ -8,25 +8,6 @@ color: white
 
 Jordan Sissel. hacker. Loggly, Inc.
 
-![hoover](hoover.png)
-
-# What is Loggly?
-
-<% step do %>
-* Logging as a Service
-<% end %>
-<% step do %>
-* Provides search, analytics, and archival for your logs and events.
-<% end %>
-<% step do %>
-* You give us logs, we give you a UI and an API.
-<% end %>
-<% step do %>
-* Currently in beta - sign up: http://www.loggly.com/signup/
-<% end %>
-
-![hoover](hoover.png)
-
 # Puppet at Loggly
 
 Our puppet deployment is:
@@ -504,7 +485,7 @@ Exporting a check (a custom define):
         remote => true,                    # Is an NRPE check
         host => $fqdn,                     # Host to target
         contacts => "pagerduty",           # Contact
-        tag => "deployment::$deployment";  # Workaround for bug#5329
+        tag => "deployment::$deployment";  # Workaround for bug#5239
     }
 
     nagios::command {
@@ -518,7 +499,7 @@ Exporting a check (a custom define):
 
 Collect all checks exported in our deployment (the ```<<| ... |>>``` syntax):
 
-    # Query by tag to work around puppet bug #5329
+    # Query by tag to work around puppet bug #5239
     Nagios::Check <<| tag == "deployment::$deployment" |>> {
       notify => Class["nagios::server"]
     }

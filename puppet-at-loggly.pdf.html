@@ -61,52 +61,13 @@ for princexml (CSS3 paged media support)
 
 <p>Jordan Sissel. hacker. Loggly, Inc.</p>
 
-
-</div>
-<div class='slide '>
-<h1 id="what-is-loggly">What is Loggly?</h1><!-- begin step {} -->
-<div class="step">
-
-  <ul>
-    <li>Logging as a Service</li>
-  </ul>
-</div>
-<!-- end step -->
-
-<!-- begin step {} -->
-<div class="step">
-
-  <ul>
-    <li>Provides search, analytics, and archival for your logs and events.</li>
-  </ul>
-</div>
-<!-- end step -->
-
-<!-- begin step {} -->
-<div class="step">
-
-  <ul>
-    <li>You give us logs, we give you a UI and an API.</li>
-  </ul>
-</div>
-<!-- end step -->
-
-<!-- begin step {} -->
-<div class="step">
-
-  <ul>
-    <li>Currently in beta - sign up: http://www.loggly.com/signup/</li>
-  </ul>
-</div>
-<!-- end step -->
-
-
 </div>
 <div class='slide '>
 <h1 id="puppet-at-loggly">Puppet at Loggly</h1><p>Our puppet deployment is:</p>
 
 <ul>
   <li>in EC2 (using RightScale)</li>
+  <li>also on vmware/physical hosts (for random dev work)</li>
   <li>nodeless (pure fact-driven)</li>
   <li>masterless (no puppet master)</li>
 </ul>
@@ -135,14 +96,29 @@ for princexml (CSS3 paged media support)
 
 </div>
 <div class='slide '>
+<h1 id="agenda">Agenda</h1><ul>
+  <li>Style</li>
+  <li>Truth</li>
+  <li>Nodeless Puppet</li>
+  <li>Exported Resoruces</li>
+  <li>Masterless Puppet</li>
+</ul>
+
+
+</div>
+<div class='slide '>
 <h1 id="style---modules">Style - Modules</h1><p>I never use &lsquo;import&rsquo;. I always let puppet determine the path of a class.</p>
 
 <p>Your puppet repository should look like this:</p>
 
 <pre><code>manifests/site.pp
 modules/MODULENAME/{manifests,files,templates,plugins}/
+
 # Examples:
-modules/a
+modules/apache/manifests/server.pp
+modules/apache/templates/httpd.conf.erb
+modules/ssh/manifests/server.pp
+modules/ssh/files/sshd_config
 </code></pre>
 
 <ul>
@@ -152,7 +128,6 @@ modules/a
       <li>automatically looks for it here: modules/foo/manifests/bar/baz.pp</li>
     </ul>
   </li>
-  <li>Namespace everything.</li>
 </ul>
 
 
@@ -470,7 +445,7 @@ config/s3_enable_customers,all
 
 </div>
 <div class='slide '>
-<h1 id="role-based-deployment">Role-based deployment</h1><!-- begin step {} -->
+<h1 id="truth---role-based-deployment">Truth - Role-based deployment</h1><!-- begin step {} -->
 <div class="step">
 
   <ul>
@@ -500,7 +475,7 @@ config/s3_enable_customers,all
 
 </div>
 <div class='slide '>
-<h1 id="defining-a-role">Defining a Role</h1><pre><code>class loggly::frontend {
+<h1 id="truth---defining-a-role">Truth - Defining a Role</h1><pre><code>class loggly::frontend {
   # include any other required classes
 
   package {
@@ -512,7 +487,7 @@ config/s3_enable_customers,all
     "allow https": ports =&gt; 443;
   }
 
-  apache::site {
+  apache::config {
     "loggly-frontend":
       source =&gt; template("loggly/frontend/loggly-frontend.httpd.conf.erb");
   }
@@ -522,7 +497,7 @@ config/s3_enable_customers,all
 
 </div>
 <div class='slide '>
-<h1 id="defining-a-role-1">Defining a Role</h1><p>Result of previous slide&rsquo;s config:</p>
+<h1 id="truth---defining-a-role-1">Truth - Defining a Role</h1><p>Result of previous slide&rsquo;s config:</p>
 
 <ul>
   <li>dpkg -l loggly-frontend: <code>loggly-frontend   3044.trunk</code></li>
@@ -541,7 +516,7 @@ config/s3_enable_customers,all
 
 </div>
 <div class='slide '>
-<h1 id="defining-a-role-2">Defining a Role</h1><p>All features of a role should be defined in that class.</p>
+<h1 id="truth---defining-a-role-2">Truth - Defining a Role</h1><p>All features of a role should be defined in that class.</p>
 
 <ul>
   <li>Define firewall rules (even if you export this to a network device)</li>
@@ -619,7 +594,7 @@ class truth::enforcer {
 
 </div>
 <div class='slide '>
-<h1 id="custom-resources">Custom Resources</h1><p>Custom defines let you create your own resource types that wrap other resources.</p>
+<h1 id="custom-defined-resources">Custom Defined Resources</h1><p>Custom defines let you create your own resource types that wrap other resources.</p>
 
 <pre><code># Simplified version:
 define supervisor::program($command, $user, $notifycmd="", $directory="/",
@@ -694,6 +669,11 @@ define supervisor::program($command, $user, $notifycmd="", $directory="/",
   <li>You can export custom defines.</li>
 </ul>
 
+<p>Biggest win: </p>
+
+<p><strong>Treat your infrastructure as a collective (or multiple collectives) rather
+than as individual, standalone hosts</strong></p>
+
 
 </div>
 <div class='slide '>
@@ -725,7 +705,7 @@ define supervisor::program($command, $user, $notifycmd="", $directory="/",
     remote =&gt; true,                    # Is an NRPE check
     host =&gt; $fqdn,                     # Host to target
     contacts =&gt; "pagerduty",           # Contact
-    tag =&gt; "deployment::$deployment";  # Workaround for bug#5329
+    tag =&gt; "deployment::$deployment";  # Workaround for bug#5239
 }
 
 nagios::command {
@@ -740,7 +720,7 @@ nagios::command {
 <div class='slide '>
 <h1 id="collecting-exported-checks">Collecting Exported Checks</h1><p>Collect all checks exported in our deployment (the <code>&lt;&lt;| ... |&gt;&gt;</code> syntax):</p>
 
-<pre><code># Query by tag to work around puppet bug #5329
+<pre><code># Query by tag to work around puppet bug #5239
 Nagios::Check &lt;&lt;| tag == "deployment::$deployment" |&gt;&gt; {
   notify =&gt; Class["nagios::server"]
 }
@@ -902,7 +882,7 @@ Hello world
 
 </div>
 <div class='slide '>
-<h1 id="lifecycle-of-a-masterless-puppet-run">Lifecycle of a (Masterless) Puppet Run</h1><p>We have a script run via cron doing:</p>
+<h1 id="masterless-lifecycle-of-a-puppet-run">Masterless: Lifecycle of a Puppet Run</h1><p>We have a script run via cron doing:</p>
 
 <!-- begin step {} -->
 <div class="step">
